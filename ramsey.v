@@ -1,9 +1,13 @@
+(* A proof of the finite Ramsey theorem: for every s, t there exists n
+   such that any finite graph of size at lest n contains a clique of
+   size s or a completely disconnect subgraph of size t. *)
+
 Require Import Arith Lia ssrfun.
 Require Import Program.
 
 Import EqNotations.
 
-From Hammer Require Import Hammer.
+From Hammer Require Import Tactics.
 
 Require Import fin.
 
@@ -35,8 +39,7 @@ Definition SubgraphBy {n m} (f : Fin n -> Fin m) (g1 : Graph n) (g2 : Graph m) :
 Definition Subgraph {n m} (g1 : Graph n) (g2 : Graph m) :=
   exists f : Fin n -> Fin m, SubgraphBy f g1 g2.
 
-Definition preimage {n m} (g : Graph m) (f : Fin n -> Fin m) :
-  Graph n.
+Definition preimage {n m} (g : Graph m) (f : Fin n -> Fin m) : Graph n.
   refine {| E := (fun x y => g (f x) (f y)) |}; sauto.
 Defined.
 
@@ -54,62 +57,140 @@ Proof.
   hauto l: on use: inj_comp.
 Qed.
 
-Definition extend {n} (g : Graph n) (P : Fin n -> Prop)
-           (P_dec : forall x : Fin n, {P x}+{~P x}) : Graph (S n).
-  refine {| E := fun x : Fin (S n) =>
-                   match x in Fin n0 return n0 = S n -> Fin (S n) -> Prop with
-                   | FinO =>
-                     fun _ (y : Fin (S n)) =>
-                       match y in Fin n0 return n0 = S n -> Prop with
-                       | FinO => fun=> False
-                       | FinS y' => fun p => P (rew (eq_add_S _ _ p) in y')
-                       end eq_refl
-                   | FinS x' =>
-                     fun p0 (y : Fin (S n)) =>
-                       match y in Fin n0 return n0 = S n -> Prop with
-                       | FinO => fun=> P (rew (eq_add_S _ _ p0) in x')
-                       | FinS y' => fun p1 => g (rew (eq_add_S _ _ p0) in x')
-                                                (rew (eq_add_S _ _ p1) in y')
-                       end eq_refl
-                   end eq_refl
-         |}.
-  - sauto dep: on use: E_decidable.
-  - sauto dep: on use: E_irreflexive.
-  - sauto dep: on.
-Defined.
-
-Definition dep_compose {A B C} :
-  (forall x : B, C x) -> forall f : (A -> B), forall x : A, C (f x) :=
-  fun f g x => f (g x).
-
-Notation "F ⊙ G" := (dep_compose F G) (at level 40, left associativity).
-
-Lemma lem_extend_subgraph {n m} (P : Fin m -> Prop) (P_dec : forall x, {P x}+{~P x})
-      (f : Fin n -> Fin m) g1 g2 :
-  SubgraphBy f g1 g2 ->
-  Subgraph (extend g1 (P ∘ f) (P_dec ⊙ f)) (extend g2 P P_dec).
+Lemma lem_clique_extend {n m} (g : Graph m) (v : Fin m) (f : Fin n -> Fin m) (s : nat) :
+  injective f ->
+  Subgraph (Clique s) (preimage g f) ->
+  (forall v' : Fin n, g v (f v')) ->
+  Subgraph (Clique (S s)) g.
 Proof.
-  intro H.
-  unfold Subgraph.
-  destruct n as [|n].
-  - exists (fun=> FinO).
-    unfold SubgraphBy, injective in *.
-    qsimpl dep: on use: E_irreflexive.
-    depelim x1; depelim x2; sauto dep: on.
-  - exists (fun x : Fin (S (S n)) =>
-              match x in Fin n0 return n0 = S (S n) -> Fin (S m) with
-              | FinO => fun=> FinO
-              | FinS x' => fun p => FinS (f (rew (eq_add_S _ _ p) in x'))
-              end eq_refl).
-    unfold SubgraphBy in *.
-    destruct H as [Hi He].
+  intros Hf H Hv.
+  unfold Subgraph, SubgraphBy, preimage in H.
+  simpl in H.
+  destruct H as [h [Hh H]].
+  unfold Subgraph, SubgraphBy.
+  simpl.
+  destruct s as [|s].
+  - exists (fun=> v).
+    unfold injective.
+    sauto lq: on dep: on use: E_irreflexive.
+  - exists (fun x : Fin (S (S s)) =>
+              match fin_conv (m := s) x with
+              | inleft x' => f (h x')
+              | inright _ => v
+              end).
     split.
-    + unfold injective in *.
+    + unfold injective in *; simpl.
       intros x1 x2.
-      depelim x1; depelim x2; intro H; [sauto..|].
-      enough (x1 = x2) by sauto.
-      depelim H; sauto.
-    + depelim i; depelim j; sauto unfold: compose.
+      destruct (fin_conv x1) as [x1'|?] eqn: Heq1.
+      * assert (Hx1s: x1 <= s) by eauto using lem_fin_conv_le.
+        destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           destruct (lem_fin_conv x1 s Hx1s) as [x1'' ?].
+           destruct (lem_fin_conv x2 s Hx2s) as [x2'' ?].
+           assert (x1'' = x1') by hauto l: on.
+           assert (x2'' = x2') by hauto l: on.
+           hauto l: on use: lem_fin_eq.
+        ** intro.
+           sfirstorder use: E_irreflexive.
+      * destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           intro.
+           sfirstorder use: E_irreflexive.
+        ** assert (x1 <= S s) by sauto use: lem_fin_le.
+           assert (x1 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           assert (x2 <= S s) by sauto use: lem_fin_le.
+           assert (x2 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           strivial.
+    + intros x1 x2.
+      destruct (fin_conv x1) as [x1'|?] eqn: Heq1.
+      * assert (Hx1s: x1 <= s) by eauto using lem_fin_conv_le.
+        destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           destruct (lem_fin_conv x1 s Hx1s) as [x1'' ?].
+           destruct (lem_fin_conv x2 s Hx2s) as [x2'' ?].
+           assert (x1'' = x1') by hauto l: on.
+           assert (x2'' = x2') by hauto l: on.
+           sfirstorder.
+        ** sauto use: E_irreflexive.
+      * destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           sauto use: E_irreflexive.
+        ** assert (x1 <= S s) by sauto use: lem_fin_le.
+           assert (x1 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           assert (x2 <= S s) by sauto use: lem_fin_le.
+           assert (x2 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           strivial use: E_irreflexive.
+Qed.
+
+Lemma lem_empty_extend {n m} (g : Graph m) (v : Fin m) (f : Fin n -> Fin m) (s : nat) :
+  injective f ->
+  Subgraph (Empty s) (preimage g f) ->
+  (forall v' : Fin n, f v' <> v /\ ~ g v (f v')) ->
+  Subgraph (Empty (S s)) g.
+Proof.
+  intros Hf H Hv.
+  unfold Subgraph, SubgraphBy, preimage in H.
+  simpl in H.
+  destruct H as [h [Hh H]].
+  unfold Subgraph, SubgraphBy.
+  simpl.
+  destruct s as [|s].
+  - exists (fun=> v).
+    unfold injective.
+    sauto lq: on dep: on use: E_irreflexive.
+  - exists (fun x : Fin (S (S s)) =>
+              match fin_conv (m := s) x with
+              | inleft x' => f (h x')
+              | inright _ => v
+              end).
+    split.
+    + unfold injective in *; simpl.
+      intros x1 x2.
+      destruct (fin_conv x1) as [x1'|?] eqn: Heq1.
+      * assert (Hx1s: x1 <= s) by eauto using lem_fin_conv_le.
+        destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           destruct (lem_fin_conv x1 s Hx1s) as [x1'' ?].
+           destruct (lem_fin_conv x2 s Hx2s) as [x2'' ?].
+           assert (x1'' = x1') by hauto l: on.
+           assert (x2'' = x2') by hauto l: on.
+           hauto l: on use: lem_fin_eq.
+        ** sfirstorder.
+      * destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           sauto lq: on rew: off.
+        ** assert (x1 <= S s) by sauto use: lem_fin_le.
+           assert (x1 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           assert (x2 <= S s) by sauto use: lem_fin_le.
+           assert (x2 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           strivial.
+    + intros x1 x2.
+      destruct (fin_conv x1) as [x1'|?] eqn: Heq1.
+      * assert (Hx1s: x1 <= s) by eauto using lem_fin_conv_le.
+        destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           destruct (lem_fin_conv x1 s Hx1s) as [x1'' ?].
+           destruct (lem_fin_conv x2 s Hx2s) as [x2'' ?].
+           assert (x1'' = x1') by hauto l: on.
+           assert (x2'' = x2') by hauto l: on.
+           sfirstorder.
+        ** sauto.
+      * destruct (fin_conv x2) as [x2'|?] eqn: Heq2.
+        ** assert (Hx2s: x2 <= s) by eauto using lem_fin_conv_le.
+           sauto.
+        ** assert (x1 <= S s) by sauto use: lem_fin_le.
+           assert (x1 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           assert (x2 <= S s) by sauto use: lem_fin_le.
+           assert (x2 = ∇ (S s)).
+           { apply lem_fin_nabla; lia. }
+           strivial use: E_irreflexive.
 Qed.
 
 Definition dec_add : forall n1 n2 m1 m2,
@@ -277,16 +358,13 @@ Proof.
         ** specialize (Hs' (preimage g f)).
            destruct Hs' as [HH|HH].
            *** left.
-               assert (t' <> 0).
-               intros ?; subst.
-               admit.
-
-               unfold Subgraph in HH.
-               destruct HH as [F HH].
-               assert (Subgraph (extend (Clique (s - 1)) (P ∘ F) (P_dec ⊙ F))
-                                (extend (preimage g f) P P_dec))
-               assert (Subgraph (extend ()).
-               admit.
+               clear -HH Hi Hc.
+               destruct s as [|s].
+               { unfold Subgraph, SubgraphBy, injective.
+                 sauto dep: on. }
+               simpl in HH.
+               rewrite <- minus_n_O in HH.
+               eapply lem_clique_extend; sauto.
            *** right.
                clear -HH Hi.
                assert (Subgraph (preimage g f) g) by auto using lem_subgraph_preimage.
@@ -298,5 +376,11 @@ Proof.
                assert (Subgraph (preimage g f) g) by auto using lem_subgraph_preimage.
                sauto use: lem_subgraph_trans.
            *** right.
-               admit.
+               clear -HH Hi Hc.
+               destruct t.
+               { unfold Subgraph, SubgraphBy, injective.
+                 sauto dep: on. }
+               simpl in HH.
+               rewrite <- minus_n_O in HH.
+               eapply lem_empty_extend; sauto.
 Qed.

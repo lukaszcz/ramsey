@@ -1,3 +1,6 @@
+(* Finite sets of natural numbers: Fin n is a type of natural numbers
+   less than n. *)
+
 Require Import Arith Lia ssrfun.
 Require Import Program.
 
@@ -159,17 +162,6 @@ Qed.
 Definition fin_conv2 {n} m (x : Fin n) : Fin (S m) :=
   match fin_conv (m := m) x with inleft y => y | inright _ => FinO end.
 
-Lemma lem_fin_conv2 {n} :
-  forall (x : Fin (S n)) m, x <= m -> fin_conv2 n (fin_conv2 m x) = x.
-Proof.
-  intros x m H.
-  destruct (lem_fin_conv x m H) as [y [H1 [H2 _]]].
-  unfold fin_conv2.
-  rewrite H1.
-  rewrite H2.
-  reflexivity.
-Qed.
-
 Lemma lem_fin_conv2_to_nat {n} :
   forall (x : Fin (S n)) m, x <= m -> fin_to_nat (fin_conv2 m x) = x.
 Proof.
@@ -194,161 +186,6 @@ Qed.
 Lemma lem_fin_nabla {n} (x : Fin (S n)) : x = n :> nat -> x = ∇ n.
 Proof.
   depind x; sauto q: on.
-Qed.
-
-Lemma lem_fin_neq_nabla {n} (x : Fin (S n)) : x <> ∇ n -> x < n.
-Proof.
-  intro H.
-  assert (x <> n :> nat) by auto using lem_fin_nabla.
-  assert (x <= n) by sauto use: lem_fin_le.
-  assert (x < n) by lia.
-  strivial.
-Qed.
-
-Lemma lem_fin_S_either {n m} (f : Fin (S n) -> Fin (S m)) :
-  (exists x : Fin (S n), f x = ∇ m) \/ forall x : Fin (S n), f x < m.
-Proof.
-  induction n as [|n IH].
-  - destruct (fin_eq_dec (f FinO) (∇ m));
-      sauto lq: on dep: on use: lem_fin_neq_nabla.
-  - pose (g := fun x : Fin (S n) => f (fin_conv2 (S n) x)).
-    specialize (IH g).
-    destruct IH as [[x H]|H].
-    + left.
-      exists (fin_conv2 (S n) x).
-      assumption.
-    + destruct (fin_eq_dec (f (∇ S n)) (∇ m)); [ strivial | ].
-      right.
-      intro x.
-      destruct (fin_eq_dec x (∇ S n)).
-      * qauto l: on use: lem_fin_neq_nabla.
-      * assert (x < S n) by qauto l: on use: lem_fin_neq_nabla.
-        specialize (H (fin_conv2 n x)).
-        unfold g in H.
-        rewrite lem_fin_conv2 in H by lia.
-        assumption.
-Qed.
-
-Lemma lem_fin_injective_le {n m} (f : Fin n -> Fin m) : injective f -> n <= m.
-Proof.
-  revert f.
-  revert m n.
-  unfold injective.
-  induction m as [| m IH ].
-  - intros.
-    destruct n; subst.
-    + reflexivity.
-    + remember (∇[n] 0) as x0.
-      destruct x0 as [x0|]; [| strivial ].
-      remember (f x0) as y.
-      depelim y.
-  - intros n f H.
-    destruct n; [lia|].
-    destruct m.
-    { destruct n; [reflexivity|].
-      remember (∇[S n] 0) as x0.
-      remember (∇[S n] 1) as x1.
-      destruct x0 as [x0|]; [| strivial ].
-      destruct x1 as [x1|]; [| strivial ].
-      remember (f x0) as y0.
-      remember (f x1) as y1.
-      depelim y0.
-      depelim y1.
-      2: depelim y1.
-      2: depelim y0.
-      assert (x0 = x1) by sauto.
-      sauto. }
-    destruct (lem_fin_S_either f) as [[y HH]|HH].
-    + assert (H0: forall x : Fin (S n), x <> y -> f x <= m).
-      { intros x Hx.
-        assert (f x <> ∇ S m) by sauto.
-        assert (f x <= S m) by auto using lem_fin_le.
-        assert (f x < S m) by auto using lem_fin_neq_nabla.
-        lia. }
-      pose (g := fun x : Fin n =>
-                   fin_conv2 m (f (if lt_dec x y then fin_conv2 n x else FinS x))).
-      assert (Hg: forall x1 x2 : Fin n, g x1 = g x2 -> x1 = x2).
-      { clear -H0 H.
-        intros x1 x2 Hg.
-        unfold g in Hg.
-        destruct n; [depelim x1|].
-        destruct (lt_dec x1 y) as [H1|H1];
-          destruct (lt_dec x2 y) as [H2|H2].
-        * apply (lem_fin_conv2_injective (m := S n)); auto using lem_fin_le.
-          apply H.
-          apply (lem_fin_conv2_injective (m := m)).
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H1.
-             rewrite lem_fin_conv2_to_nat in H1 by sauto use: lem_fin_le.
-             lia.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H2.
-             rewrite lem_fin_conv2_to_nat in H2 by sauto use: lem_fin_le.
-             lia.
-          ** assumption.
-        * exfalso.
-          apply lem_fin_conv2_injective in Hg.
-          ** apply H in Hg.
-             assert (x1 = S x2 :> nat).
-             { erewrite <- lem_fin_conv2_to_nat; hauto l: on use: lem_fin_le. }
-             lia.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H1.
-             rewrite lem_fin_conv2_to_nat in H1; [lia|hauto l: on use: lem_fin_le].
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H2.
-             simpl in H2.
-             lia.
-        * exfalso.
-          apply lem_fin_conv2_injective in Hg.
-          ** apply H in Hg.
-             assert (S x1 = x2 :> nat).
-             { replace (fin_to_nat x2) with (fin_to_nat (fin_conv2 (S n) x2)).
-               *** rewrite <- Hg.
-                   reflexivity.
-               *** rewrite lem_fin_conv2_to_nat;
-                     [ reflexivity |  hauto l: on use : lem_fin_le ]. }
-             lia.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H1.
-             simpl in H1.
-             lia.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H2.
-             rewrite lem_fin_conv2_to_nat in H2; [lia|hauto l: on use: lem_fin_le].
-        * apply lem_fin_conv2_injective in Hg.
-          ** apply H in Hg.
-             depelim Hg.
-             reflexivity.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H1.
-             simpl in H1.
-             lia.
-          ** apply H0.
-             intro HH.
-             rewrite <- HH in H2.
-             simpl in H2.
-             lia. }
-      specialize (IH n g Hg).
-      lia.
-    + pose (g := fun x : Fin (S n) => fin_conv2 m (f x)).
-      assert (Hg: forall x1 x2, g x1 = g x2 -> x1 = x2).
-      { unfold g.
-        intros x1 x2 Hg.
-        apply H.
-        assert (f x1 <= m) by (clear -HH; sauto).
-        assert (f x2 <= m) by (clear -HH; sauto).
-        eapply lem_fin_conv2_injective; [eassumption..|].
-        assumption. }
-      specialize (IH (S n) g Hg).
-      lia.
 Qed.
 
 Import EqNotations.
