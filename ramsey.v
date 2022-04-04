@@ -1,6 +1,6 @@
-(* A proof of the finite Ramsey theorem: for every s, t there exists n
-   such that any finite graph of size at lest n contains a clique of
-   size s or a completely disconnect subgraph of size t. *)
+(* A proof of the finite Ramsey's theorem: for every s, t there exists
+   n such that any finite graph of size at least n contains a clique
+   of size s or a completely disconnect subgraph of size t. *)
 
 Require Import Arith Lia ssrfun.
 Require Import Program.
